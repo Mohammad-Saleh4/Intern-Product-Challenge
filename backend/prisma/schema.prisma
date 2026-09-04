@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ReservationStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+model Product {
+  id                String        @id @default(uuid()) @db.Uuid
+  name              String
+  totalQuantity     Int           @map("total_quantity")
+  availableQuantity Int           @map("available_quantity")
+  price             Decimal       @db.Decimal(10, 2)
+  reservations      Reservation[]
+
+  @@map("products")
+}
+
+model Reservation {
+  id         String            @id @default(uuid()) @db.Uuid
+  productId  String            @map("product_id") @db.Uuid
+  userId     String            @map("user_id") @db.Uuid
+  status     ReservationStatus @default(PENDING)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt  DateTime          @default(dbgenerated("now() + interval '15 minutes'")) @map("expires_at") @db.Timestamptz(3)
+  product    Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  order      Order?
+
+  @@index([productId, status])
+  @@index([status, expiresAt])
+  @@map("reservations")
+}
+
+model Order {
+  id            String      @id @default(uuid()) @db.Uuid
+  reservationId String      @unique @map("reservation_id") @db.Uuid
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@map("orders")
+}

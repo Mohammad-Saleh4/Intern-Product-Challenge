@@ -1,6 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
-  GoneException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(reservationId: string) {
+  async create(reservationId: string, userId: string) {
     const now = new Date();
     const order = await this.prisma.$transaction(async (tx) => {
       const reservation = await tx.reservation.findUnique({
@@ -21,6 +22,12 @@ export class OrdersService {
       if (!reservation) {
         throw new NotFoundException(
           `Reservation ${reservationId} was not found`,
+        );
+      }
+
+      if (reservation.userId !== userId) {
+        throw new ForbiddenException(
+          'Reservation does not belong to this user',
         );
       }
 
@@ -47,6 +54,7 @@ export class OrdersService {
       const completed = await tx.reservation.updateMany({
         where: {
           id: reservationId,
+          userId,
           status: 'PENDING',
           expiresAt: { gt: now },
         },
@@ -64,7 +72,7 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new GoneException('Reservation has expired');
+      throw new BadRequestException('Reservation has expired');
     }
 
     return order;

@@ -1,8 +1,17 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateReservationDto } from './dto/create-reservation.dto.js';
 
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
+
+type LockedProduct = {
+  id: string;
+  available_quantity: number;
+};
 
 @Injectable()
 export class ReservationsService {
@@ -12,24 +21,31 @@ export class ReservationsService {
     const expiresAt = new Date(Date.now() + RESERVATION_TTL_MS);
 
     return this.prisma.$transaction(async (tx) => {
-      const inventory = await tx.product.updateMany({
-        where: {
-          id: dto.productId,
-          availableQuantity: { gt: 0 },
-        },
-        data: {
-          availableQuantity: { decrement: 1 },
-        },
-      });
+      const [product] = await tx.$queryRaw<LockedProduct[]>`
+        SELECT id, available_quantity
+        FROM products
+        WHERE id = ${dto.productId}::uuid
+        FOR UPDATE
+      `;
 
-      if (inventory.count === 0) {
-        throw new ConflictException('Product is unavailable');
+      if (!product) {
+        throw new NotFoundException(`Product ${dto.productId} was not found`);
       }
+
+      if (product.available_quantity <= 0) {
+        throw new BadRequestException('Sold out');
+      }
+
+      await tx.product.update({
+        where: { id: product.id },
+        data: { availableQuantity: { decrement: 1 } },
+      });
 
       return tx.reservation.create({
         data: {
           productId: dto.productId,
           userId: dto.userId,
+          status: 'PENDING',
           expiresAt,
         },
         include: { product: true },

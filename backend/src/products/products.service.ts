@@ -18,7 +18,10 @@ export class ProductsService {
   }
 
   findAll() {
-    return this.prisma.product.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.product.findMany({
+      where: { availableQuantity: { gt: 0 } },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async findOne(id: string) {
